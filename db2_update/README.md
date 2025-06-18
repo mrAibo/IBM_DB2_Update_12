@@ -38,7 +38,7 @@ This script automates the online backup of a DB2 database.
 ### Configuration
 Open `scripts/backup_db2.sh` and modify the following variables at the beginning of the script:
 *   `INSTANCE`: Your DB2 instance name (e.g., `db2inst1`).
-*   `DB_NAME`: The name of the database to back up (e.g., `LARGEDB`).
+*   `DB_NAME`: The name of the database to back up. Set this to **"ALL"** (case-insensitive) or leave it empty to attempt to back up all user databases discovered in the instance. If set to "ALL" and `BACKUP_DIR` is a single path, subdirectories for each database will be automatically created within `BACKUP_DIR`.
 *   `BACKUP_DIR`: Comma-separated list of directories where backup images will be stored (e.g., `/backup/fast1,/backup/fast2`). Using multiple paths to different physical devices can improve I/O.
 *   `UTIL_HEAP`: The `UTIL_HEAP_SZ` DBM CFG parameter value (in 4KB pages). The script default is `400000`. The original issue description suggested this should result in ~4GB, but 400000 * 4KB = 1.56GB. For ~4GB, use `1048576`. Adjust as needed for your system's memory.
 *   `NUM_BUFFERS`: Number of buffers for the backup process (e.g., `16`).
@@ -62,6 +62,12 @@ The script, as per the original requirement, updates `UTIL_HEAP_SZ` and then per
 2.  Ensure the script is executable: `chmod +x scripts/backup_db2.sh`
 3.  Run the script: `./scripts/backup_db2.sh`
 
+**Note on "ALL" Databases Backup:** When `DB_NAME` is set to "ALL" or is empty, the script will:
+1.  Discover all user databases in the instance (excluding common system/sample database patterns).
+2.  Iterate through each discovered database and perform a backup.
+3.  If `BACKUP_DIR` is a single path (not a comma-separated list of multiple paths), it will create a subdirectory named after each database within `BACKUP_DIR` to store its backup image, preventing overwrites.
+4.  The script will report an overall status. If any database backup fails, the script will exit with an error code.
+
 ## Restore Script (`scripts/restore_db2.sh`)
 
 This script automates the restoration of a DB2 database from a backup.
@@ -75,7 +81,7 @@ This script is configured to **ERASE** data from specified database and log dire
 ### Configuration
 Open `scripts/restore_db2.sh` and modify these variables:
 *   `INSTANCE`: Your DB2 instance name.
-*   `DB_NAME`: The name of the database to restore.
+*   `DB_NAME`: The name of the specific database to restore. This script restores one database at a time. It does **not** support an "ALL" keyword.
 *   `BACKUP_DIR`: Directory where the backup images are located.
 *   `DB2_DATA_DIR`: Path to the DB2 data directory (e.g., `/db2data`). **Contents will be wiped.**
 *   `DB2_LOGS_DIR`: Path to the DB2 log directory (e.g., `/db2logs`). **Contents will be wiped.**
@@ -91,6 +97,10 @@ The script includes a command `db2updv121 -d $DB_NAME`. This utility is specific
 1.  Configure all variables carefully, especially `DB2_DATA_DIR` and `DB2_LOGS_DIR`.
 2.  Ensure the script is executable: `chmod +x scripts/restore_db2.sh`
 3.  Run the script: `./scripts/restore_db2.sh` (Be prepared for the warning and data deletion).
+
+**Note on Restoring Multiple Databases:** To restore multiple databases, you can either:
+1.  Run this script multiple times, once for each database.
+2.  Utilize the `scripts/recreate_restore_upgrade.sh` script if you are performing an upgrade that involves recreating the instance and restoring all databases, as that script handles iterating through a list of databases for restore.
 
 ## Monitoring Backup/Restore Progress
 
@@ -170,7 +180,7 @@ For administrators looking to perform a major version upgrade of their DB2 envir
 
 To assist with the step-by-step execution of the in-place upgrade, a helper script is provided. This script is not fully automated but guides you through the necessary commands and checks.
 *   **Helper Script:** `scripts/in_place_upgrade_helper.sh`
-*   **Usage:** Review and configure the script variables, then execute it, following the prompts and performing manual verifications as required. It's designed to be run alongside the detailed guide.
+*   **Usage:** This script now automatically discovers all user databases in the specified instance (associated with the old DB2 version path) and guides you through the upgrade steps for each. Review and configure script variables, then execute it, following prompts and performing manual verifications. It's designed to be run alongside the detailed guide.
 
 ### Method B: Recreate Instance & Restore Upgrade Script
 This method involves creating a fresh DB2 instance with the new version software and then restoring your databases from backups taken from the old instance. This approach can be preferable for a "clean slate" or when migrating hardware/OS.
