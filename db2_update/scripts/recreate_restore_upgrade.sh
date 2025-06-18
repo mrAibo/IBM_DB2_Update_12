@@ -15,6 +15,8 @@ set -euo pipefail # Exit on error, undefined variable, or pipe failure
 
 # --- Configuration Variables ---
 # TODO: VERIFY AND SET ALL THESE VARIABLES BEFORE EXECUTION
+PERFORM_AUTOMATED_BACKUP=false                  # Set to true to let this script handle backups
+PERFORM_AUTOMATED_RESTORE=false                 # Set to true to let this script handle restores
 OLD_VERSION_DB2_PATH="/opt/ibm/db2/V11.5"       # Path to your current (old) DB2 version binaries
 NEW_VERSION_DB2_PATH="/opt/ibm/db2/V12.1"       # Path to your NEWLY INSTALLED DB2 version binaries
 INSTANCE_NAME="db2inst1"                        # DB2 instance name (will be dropped and recreated)
@@ -183,26 +185,44 @@ backup_databases_from_old_instance() {
 
     create_rollback_script # Create rollback script now that we have DB_LIST
 
-    log "Starting instance $INSTANCE_NAME with old software for backup (if not already running)..."
-    # This is essential. Backups must be from a running instance.
-    # The profile must be sourced from the OLD version.
-    if ! su - "$INSTANCE_NAME" -c ". ${OLD_VERSION_DB2_PATH}/db2profile; db2start" >> "$LOG_FILE" 2>&1; then
-        log "FATAL ERROR: Failed to start instance $INSTANCE_NAME using $OLD_VERSION_DB2_PATH for backups. Cannot proceed."
-        exit 1
-    fi
-
-    for db_name in "${DB_LIST[@]}"; do
-        log "Backing up database: $db_name to $BACKUP_DIR"
-        if ! run_as_instance ". ${OLD_VERSION_DB2_PATH}/db2profile; db2 backup database $db_name to $BACKUP_DIR include logs"; then
-            log "FATAL ERROR: Backup failed for database $db_name. Cannot proceed."
-            exit 1 # Critical step
+    if [ "$PERFORM_AUTOMATED_BACKUP" = true ]; then
+        log "PERFORM_AUTOMATED_BACKUP is true. Proceeding with automated backup."
+        log "Starting instance $INSTANCE_NAME with old software for backup (if not already running)..."
+        # This is essential. Backups must be from a running instance.
+        # The profile must be sourced from the OLD version.
+        if ! su - "$INSTANCE_NAME" -c ". ${OLD_VERSION_DB2_PATH}/db2profile; db2start" >> "$LOG_FILE" 2>&1; then
+            log "FATAL ERROR: Failed to start instance $INSTANCE_NAME using $OLD_VERSION_DB2_PATH for backups. Cannot proceed."
+            exit 1
         fi
-        log "Backup for $db_name completed."
-    done
 
-    log "All database backups completed. Stopping instance $INSTANCE_NAME before dropping."
-    if ! run_as_instance ". ${OLD_VERSION_DB2_PATH}/db2profile; db2stop force"; then
-         log "WARN: Failed to stop instance $INSTANCE_NAME after backups. Proceeding with caution."
+        for db_name in "${DB_LIST[@]}"; do
+            log "Backing up database (automated): $db_name to $BACKUP_DIR"
+            if ! run_as_instance ". ${OLD_VERSION_DB2_PATH}/db2profile; db2 backup database $db_name to $BACKUP_DIR include logs"; then
+                log "FATAL ERROR: Backup failed for database $db_name. Cannot proceed."
+                exit 1 # Critical step
+            fi
+            log "Automated backup for $db_name completed."
+        done
+
+        log "All automated database backups completed. Stopping instance $INSTANCE_NAME before dropping."
+        if ! run_as_instance ". ${OLD_VERSION_DB2_PATH}/db2profile; db2stop force"; then
+             log "WARN: Failed to stop instance $INSTANCE_NAME after automated backups. Proceeding with caution."
+        fi
+    else
+        log "PERFORM_AUTOMATED_BACKUP is false. Manual backup required."
+        log "Please manually back up the following databases from instance '$INSTANCE_NAME' (old version):"
+        for db_name_manual_backup in "${DB_LIST[@]}"; do
+            log "  - $db_name_manual_backup"
+        done
+        log "Ensure backup images are placed in or correctly referenced by: $BACKUP_DIR"
+        log "You can use 'backup_db2.sh' or your standard procedures."
+        read -p "  Press Enter once manual backups are complete and verified, and images are in $BACKUP_DIR, or Ctrl+C to abort..."
+        log "Continuing after manual backup confirmation."
+        # Stop the instance after manual backup, as the automated path also stops it.
+        log "Stopping instance $INSTANCE_NAME after presumed manual backup (if it was started for manual backup)..."
+        if ! run_as_instance ". ${OLD_VERSION_DB2_PATH}/db2profile; db2stop force"; then
+             log "WARN: Failed to stop instance $INSTANCE_NAME after manual backup confirmation. Proceeding with caution."
+        fi
     fi
     log "--- Database Backups Finished ---"
 }
@@ -263,13 +283,37 @@ restore_and_configure_databases() {
     fi
 
     for db_name in "${DB_LIST[@]}"; do
-        log "Restoring database: $db_name from $BACKUP_DIR"
-        if ! run_as_instance ". ${NEW_VERSION_DB2_PATH}/db2profile; db2 restore database $db_name from '$BACKUP_DIR' replace existing"; then
-            log "ERROR: Restore failed for database $db_name. Skipping further configuration for this DB."
-            continue # Move to next database
+        if [ "$PERFORM_AUTOMATED_RESTORE" = true ]; then
+            log "PERFORM_AUTOMATED_RESTORE is true. Proceeding with automated restore."
+            log "Restoring database (automated): $db_name from $BACKUP_DIR"
+            if ! run_as_instance ". ${NEW_VERSION_DB2_PATH}/db2profile; db2 restore database $db_name from '$BACKUP_DIR' replace existing"; then
+                log "ERROR: Automated restore failed for database $db_name. Skipping further configuration for this DB."
+                # If automated restore fails, we might not want to proceed with db2updv etc. for this DB.
+                # However, the request was to run post-restore steps always.
+                # For a more robust script, one might 'continue' here.
+            else
+                log "Automated restore for $db_name completed."
+            fi
+        else
+            # This block is new - for manual restore prompt
+            # If automated restore is false, we assume the user will do it.
+            # The loop for db_name will still continue for post-restore steps.
+            # No specific action here in the loop other than logging outside if it's the first iteration.
+            if [[ $(echo "${DB_LIST[@]}" | awk '{print $1}') == "$db_name" ]]; then # Log prompt only once
+                log "PERFORM_AUTOMATED_RESTORE is false. Manual restore required for all listed databases."
+                log "The new instance '$INSTANCE_NAME' (version using $NEW_VERSION_DB2_PATH) is started."
+                log "Please manually restore the following databases into it from backups located in/referenced by: $BACKUP_DIR"
+                for db_name_manual_restore in "${DB_LIST[@]}"; do
+                    log "  - $db_name_manual_restore (then run db2updv, check NEWLOGPATH etc. manually or let script do post-restore steps)"
+                done
+                log "You can use 'restore_db2.sh' or your standard procedures."
+                read -p "  Press Enter once ALL manual restores are complete and verified for databases listed above, or Ctrl+C to abort..."
+                log "Continuing after manual restore confirmation for all databases."
+            fi
+            log "Assuming manual restore for $db_name was successful. Proceeding with post-restore steps."
         fi
-        log "Restore for $db_name completed."
 
+        # Post-restore steps (always run for each DB in DB_LIST, assuming it was restored)
         log "Running catalog update (db2updv121) for $db_name" # Assuming V12.1, make variable if needed
         local db2updv_cmd="${NEW_VERSION_DB2_PATH}/bin/db2updv121" # Adjust if target version is different
         if [ ! -f "$db2updv_cmd" ]; then

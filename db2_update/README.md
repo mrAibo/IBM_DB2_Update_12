@@ -177,9 +177,18 @@ This method involves creating a fresh DB2 instance with the new version software
 
 A script is provided to automate many steps of this process:
 *   **Script:** `scripts/recreate_restore_upgrade.sh`
-*   **Functionality:** This script handles backing up databases from the old instance, dropping the old instance, creating the new instance, restoring databases, and applying basic post-restore configurations.
+*   **Functionality:** This script manages dropping the old DB2 instance, creating a new instance with the new DB2 version, and applying post-restore configurations. It can *optionally* handle the database backup (from the old instance) and restore (to the new instance) steps automatically. By default, automated backup/restore are disabled, requiring manual intervention for these critical data operations.
 *   **Caution:** This script is destructive as it involves dropping the existing instance. Ensure you have full, verified backups and understand the script's operations by reviewing its content and the [Upgrade Methods Comparison](./DB2_Upgrade_Methods_Comparison.md) document. TEST THOROUGHLY in a non-production environment.
-*   **Configuration:** You MUST configure variables at the beginning of the script to match your environment (paths, instance names, etc.).
+*   **Backup and Restore Flexibility:**
+    *   The script includes two boolean variables to control data handling:
+        *   `PERFORM_AUTOMATED_BACKUP` (default: `false`): If set to `true`, the script will attempt to back up databases from the old instance.
+        *   `PERFORM_AUTOMATED_RESTORE` (default: `false`): If set to `true`, the script will attempt to restore databases into the new instance.
+    *   **Default Manual Mode:** With defaults set to `false`, the script will prompt you to:
+        1.  Manually back up your databases from the old instance before the old instance is dropped. You can use the `backup_db2.sh` script or your own methods. Ensure backups are placed in the directory specified by the `BACKUP_DIR` variable in `recreate_restore_upgrade.sh`.
+        2.  Manually restore your databases into the newly created instance. You can use the `restore_db2.sh` script or your own methods, using backups from the `BACKUP_DIR`.
+    *   The script will continue with instance management (drop/create) and post-restore configurations (like `db2updv121`, `NEWLOGPATH` updates, `db2rbind`) regardless of these settings, assuming the databases are made available in the new instance.
+
+*   **Configuration:** You MUST configure variables at the beginning of the script to match your environment (paths, instance names, `PERFORM_AUTOMATED_BACKUP`, `PERFORM_AUTOMATED_RESTORE`, etc.).
 
 ## WebSphere JDBC Update
 
