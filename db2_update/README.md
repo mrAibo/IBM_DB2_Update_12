@@ -17,6 +17,10 @@ This directory contains a collection of scripts and instructions to assist with 
 5.  [FixPak Installation Guide (`scripts/install_fixpak.sh`)](#fixpak-installation-guide-scriptsinstall_fixpaksh)
 6.  [JDK Update Script (`scripts/update_jdk.sh`)](#jdk-update-script-scriptsupdate_jdksh)
 7.  [WebSphere JDBC Update](#websphere-jdbc-update)
+8.  [DB2 Version Upgrade (11.5 to 12.1)](#db2-version-upgrade-115-to-121)
+    *   [Upgrade Methods Comparison](#db2-version-upgrade-methods-comparison)
+    *   [Method A: In-Place Upgrade Guide & Helper Script](#method-a-in-place-upgrade-guide--helper-script)
+    *   [Method B: Recreate Instance & Restore Upgrade Script](#method-b-recreate-instance--restore-upgrade-script)
 
 ## Scripts Overview
 
@@ -148,6 +152,34 @@ Open `scripts/update_jdk.sh` and modify:
     su - <INSTANCE_NAME> -c "db2stop"
     su - <INSTANCE_NAME> -c "db2start"
     ```
+
+## DB2 Version Upgrade (11.5 to 12.1)
+
+Upgrading a DB2 instance from a major version like 11.5 to 12.1 is a significant operation that requires careful planning. There are two primary methods to achieve this, each with its own set of procedures, benefits, and drawbacks.
+
+### DB2 Version Upgrade Methods Comparison
+Before choosing an upgrade path, it's crucial to understand the differences between the available methods. We provide a detailed comparison document that outlines the pros and cons of each approach:
+*   **Read the Comparison Guide:** [DB2 Upgrade Methods Comparison](./DB2_Upgrade_Methods_Comparison.md)
+
+### Method A: In-Place Upgrade Guide & Helper Script
+For administrators looking to perform a major version upgrade of their DB2 environment from version 11.5 to 12.1, a detailed step-by-step guide is available. This guide covers critical phases including pre-upgrade preparations, software installation, instance upgrade, database upgrade, and post-upgrade tasks.
+
+*   **Read the full guide here:** [Comprehensive Guide: Upgrading IBM DB2 from Version 11.5 to 12.1](./DB2_Upgrade_11.5_to_12.1.md)
+
+**Note:** Major version upgrades are complex and should be thoroughly tested in a non-production environment first. Always refer to the official IBM DB2 Knowledge Center for the most current and detailed instructions specific to your environment.
+
+To assist with the step-by-step execution of the in-place upgrade, a helper script is provided. This script is not fully automated but guides you through the necessary commands and checks.
+*   **Helper Script:** `scripts/in_place_upgrade_helper.sh`
+*   **Usage:** Review and configure the script variables, then execute it, following the prompts and performing manual verifications as required. It's designed to be run alongside the detailed guide.
+
+### Method B: Recreate Instance & Restore Upgrade Script
+This method involves creating a fresh DB2 instance with the new version software and then restoring your databases from backups taken from the old instance. This approach can be preferable for a "clean slate" or when migrating hardware/OS.
+
+A script is provided to automate many steps of this process:
+*   **Script:** `scripts/recreate_restore_upgrade.sh`
+*   **Functionality:** This script handles backing up databases from the old instance, dropping the old instance, creating the new instance, restoring databases, and applying basic post-restore configurations.
+*   **Caution:** This script is destructive as it involves dropping the existing instance. Ensure you have full, verified backups and understand the script's operations by reviewing its content and the [Upgrade Methods Comparison](./DB2_Upgrade_Methods_Comparison.md) document. TEST THOROUGHLY in a non-production environment.
+*   **Configuration:** You MUST configure variables at the beginning of the script to match your environment (paths, instance names, etc.).
 
 ## WebSphere JDBC Update
 
