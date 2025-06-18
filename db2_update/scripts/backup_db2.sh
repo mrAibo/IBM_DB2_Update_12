@@ -2,12 +2,32 @@
 
 # == Configuration Variables ==
 # It's recommended to review and adjust these variables to match your environment.
-
 # DB2 instance name
 INSTANCE="db2inst1"
 
 # Database name to be backed up
 DB_NAME="LARGEDB"
+
+# Configuration backup directory
+CONFIG_BKP="/tmp/db2_cfg_backup"
+
+# == Configuration Backup Start ==
+echo "Starting database configuration backup..."
+
+su - $INSTANCE << EOF
+mkdir -p $CONFIG_BKP
+cd $CONFIG_BKP
+env > env_before_upg.txt
+db2set -all > reg_before_upg.txt
+db2 get dbm cfg > dbm_before_upg.txt
+db2 get db cfg for $DB_NAME > db_before_upg.txt
+echo "Database configuration backup completed. Files saved in $CONFIG_BKP."
+EOF
+
+if [ $? -ne 0 ]; then
+  echo "Error during configuration backup. Exiting."
+  exit 1
+fi
 
 # Backup target directory/directories.
 # For multiple paths, separate them with commas (e.g., "/backup/path1,/backup/path2").
