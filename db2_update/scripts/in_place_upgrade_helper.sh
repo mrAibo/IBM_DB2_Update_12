@@ -82,7 +82,7 @@ log_master "Step 1.2a: Discovering user databases from instance '$INSTANCE_NAME'
 # The grep -vE is an attempt to filter out common system/sample DBs. Adjust regex if needed.
 # Common system DB name patterns: SQL#####N, DSN#####N (e.g. SQL00001N for sample, DSN1GWIN for some z/OS related tools if cataloged)
 # It's safer to list all and let user be aware. For now, keeping a basic filter.
-DB_LIST_CMD="db2 list db directory | awk '/Database alias|Aliasname der Datenbank/ {print \$NF}' | grep -vE '^SQL[0-9]{5}N\$|^DSN[0-9]{4,5}[A-Z0-9]\$' | sort -u"
+DB_LIST_CMD="db2 list db directory | awk '/Database alias|Aliasname der Datenbank/ {print $NF}' | grep -vE '^SQL[0-9]{5}N\$|^DSN[0-9]{4,5}[A-Z0-9]\$' | sort -u"
 
 # Attempt to get database list as instance user. This dynamically discovers all user databases from the instance.
 mapfile_output=$(su - "$INSTANCE_NAME" -c ". ${OLD_DB2_PATH}/db2profile; $DB_LIST_CMD")
