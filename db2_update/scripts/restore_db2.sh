@@ -6,7 +6,8 @@
 # DB2 instance name
 INSTANCE="db2inst1"
 
-# Database name to be restored
+# Database name to be restored (must be a specific database name).
+# This script restores one database at a time and does not support "ALL".
 DB_NAME="LARGEDB"
 
 # Backup directory/directories from where to restore.

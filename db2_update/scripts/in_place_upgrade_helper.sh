@@ -9,7 +9,7 @@
 OLD_DB2_PATH="/opt/ibm/db2/V11.5"                 # Path to your current (old) DB2 version
 NEW_DB2_PATH="/opt/ibm/db2/V12.1"                 # Path to your NEWLY INSTALLED DB2 version software
 INSTANCE_NAME="db2inst1"                          # DB2 instance name to upgrade
-DATABASE_NAMES=("SAMPLEDB" "MYDB2")               # Array of database names to upgrade (e.g., ("DB1" "DB2"))
+# DATABASE_NAMES=("SAMPLEDB" "MYDB2")               # This is now dynamically populated below. Old: Array of database names to upgrade (e.g., ("DB1" "DB2"))
 ADMIN_USER=""                                     # Admin user for db2ckupgrade, if needed (leave blank if not)
 ADMIN_PASS=""                                     # Admin password for db2ckupgrade (will prompt if blank and user is set)
 
@@ -73,10 +73,38 @@ pause_and_confirm "System requirements checked?"
 
 log_master "Step 1.2: Perform FULL DATABASE BACKUPS for all databases."
 log_master "  Refer to 'backup_db2.sh' or your standard backup procedures."
-log_master "  Example for database ${DATABASE_NAMES[0]}:"
-log_master "  su - $INSTANCE_NAME -c "db2 backup database ${DATABASE_NAMES[0]} to /your_backup_location online""
+log_master "  Example for a database 'MYDB': su - $INSTANCE_NAME -c "db2 backup database MYDB to /your_backup_location online""
 # Add loop if you want to provide example for all
 pause_and_confirm "Full backups completed and verified?"
+
+log_master "Step 1.2a: Discovering user databases from instance '$INSTANCE_NAME'..."
+# Ensure this command is run in the context of the old DB2 environment
+# The grep -vE is an attempt to filter out common system/sample DBs. Adjust regex if needed.
+# Common system DB name patterns: SQL#####N, DSN#####N (e.g. SQL00001N for sample, DSN1GWIN for some z/OS related tools if cataloged)
+# It's safer to list all and let user be aware. For now, keeping a basic filter.
+DB_LIST_CMD="db2 list db directory | awk '/Database alias|Aliasname der Datenbank/ {print \$NF}' | grep -vE '^SQL[0-9]{5}N\$|^DSN[0-9]{4,5}[A-Z0-9]\$' | sort -u"
+
+# Attempt to get database list as instance user. This dynamically discovers all user databases from the instance.
+mapfile_output=$(su - "$INSTANCE_NAME" -c ". ${OLD_DB2_PATH}/db2profile; $DB_LIST_CMD")
+if [ $? -ne 0 ]; then
+    log_master "  ERROR: Failed to execute 'db2 list db directory' as instance user '$INSTANCE_NAME'."
+    log_master "  Please ensure the instance is available and profile path is correct."
+    # Decide on behavior: exit or continue with empty list and let user manually input?
+    # For a helper script, prompting or exiting might be best. For now, log and continue, subsequent steps will show no DBs.
+    DATABASE_NAMES=()
+else
+    mapfile -t DATABASE_NAMES < <(printf '%s\n' "$mapfile_output")
+fi
+
+if [ ${#DATABASE_NAMES[@]} -eq 0 ]; then
+    log_master "  WARNING: No user databases discovered for instance '$INSTANCE_NAME' or failed to list them."
+    log_master "  Database-specific steps will be skipped. Ensure this is expected."
+    # Optionally, add a pause_and_confirm here if no DBs are found.
+else
+    log_master "  Discovered databases to process: ${DATABASE_NAMES[*]}"
+fi
+# This pause is generally good after discovery or if no DBs found.
+pause_and_confirm "Database discovery complete. Review the list above."
 
 log_master "Step 1.3: Run db2ckupgrade for each database."
 log_master "  Using db2ckupgrade from: $DB2CKUPGRADE_PATH"
@@ -202,8 +230,7 @@ log_master "  Action: Manual review and `db2 update ...` commands if necessary."
 pause_and_confirm "Configurations reviewed and updated?"
 
 log_master "Step 5.4: Perform FULL DATABASE BACKUPS for all upgraded databases."
-log_master "  Example for database ${DATABASE_NAMES[0]}:"
-log_master "  su - $INSTANCE_NAME -c "db2 backup database ${DATABASE_NAMES[0]} to /your_post_upgrade_backup_location online""
+log_master "  Example for a database 'MYDB': su - $INSTANCE_NAME -c "db2 backup database MYDB to /your_post_upgrade_backup_location online""
 pause_and_confirm "Post-upgrade backups completed?"
 
 log_master "Step 5.5: Thoroughly test all applications."
