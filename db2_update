@@ -1,0 +1,96 @@
+#!/bin/bash
+set -euo pipefail
+
+# ===== KONFIGURATION =====
+INSTANCE="db2inst1"
+OLD_VERSION="/opt/ibm/db2/V11.5"
+NEW_VERSION="/opt/ibm/db2/V12.1"
+BACKUP_DIR="/db2backup/offline_$(date +%Y%m%d)"
+LOG_FILE="/var/log/db2_prod_upgrade_$(date +%s).log"
+ROLLBACK_FILE="/tmp/db2_rollback_$(date +%s).sh"
+FENCEUSER="db2fnc"
+
+# ===== FUNKTIONEN =====
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+create_rollback() {
+  cat > "$ROLLBACK_FILE" <<EOR
+#!/bin/bash
+set -e
+log() { echo "\$(date '+%Y-%m-%d %H:%M:%S') \$1"; }
+log "=== Starte Rollback ==="
+${OLD_VERSION}/instance/db2icrt -s ese -a SERVER_ENCRYPT -p 50000 -u db2fenc1 $INSTANCE
+su - $INSTANCE -c "db2start"
+$(for db in "${DB_LIST[@]}"; do echo "  db2 restore db $db from $BACKUP_DIR replace existing"; done)
+log "=== Rollback abgeschlossen ==="
+EOR
+  chmod +x "$ROLLBACK_FILE"
+  log "Rollback-Script erstellt: $ROLLBACK_FILE"
+}
+
+# ===== PRÜFUNGEN =====
+log "=== PRODUKTIONS-UPGRADE DB2 11.5 → 12.1 ==="
+[ "$(id -u)" = "0" ] || { log "FEHLER: Nur als root ausführbar!"; exit 1; }
+
+log "=== Plattenplatz prüfen ==="
+df -h /tmp | awk 'NR==2 {if ($4 < "5G") exit 1}' || { log "FEHLER: Mindestens 5GB in /tmp benötigt"; exit 1; }
+df -h $(dirname "$BACKUP_DIR") | awk 'NR==2 {if ($4 < "50G") exit 1}' || { log "FEHLER: 50GB im Backup-Verzeichnis benötigt"; exit 1; }
+
+# ===== VORBEREITUNG =====
+log "=== Datenbanken herunterfahren ==="
+su - "$INSTANCE" -c "db2stop force" &>> "$LOG_FILE"
+pkill -9 -u "$INSTANCE" &>> "$LOG_FILE" || true
+
+# ===== BACKUP MIT METADATEN ==="
+log "=== Backup aller Datenbanken ==="
+mkdir -p "$BACKUP_DIR"
+chown "$INSTANCE:db2iadm1" "$BACKUP_DIR"
+mapfile -t DB_LIST < <(su - "$INSTANCE" -c "db2 list db directory | awk '/Database alias|Aliasname der Datenbank/ {print $5}'")
+
+create_rollback
+
+for DB in "${DB_LIST[@]}"; do
+  log "Backup von $DB"
+  su - "$INSTANCE" -c "db2 backup db $DB to $BACKUP_DIR include logs" &>> "$LOG_FILE"
+done
+
+# ===== INSTANCE UPGRADE =====
+log "=== Alte Instanz entfernen ==="
+"$OLD_VERSION"/instance/db2idrop -f "$INSTANCE" &>> "$LOG_FILE"
+
+log "=== Neue Instanz erstellen ==="
+"$NEW_VERSION"/instance/db2icrt \
+  -s ese \
+  -a SERVER_ENCRYPT \
+  -p 50000 \
+  -u "$FENCEUSER" \
+  "$INSTANCE" &>> "$LOG_FILE"
+
+# ===== DATENVERZEICHNISSE =====
+log "=== Datenpfade konfigurieren ==="
+mkdir -p /db2data /db2logs
+chown -R "$INSTANCE:db2iadm1" /db2data /db2logs
+chmod 750 /db2data /db2logs
+
+# ===== RESTORE & UPGRADE =====
+log "=== Datenbanken wiederherstellen ==="
+for DB in "${DB_LIST[@]}"; do
+  log "Restore von $DB"
+  su - "$INSTANCE" -c "db2 restore db $DB from '$BACKUP_DIR' replace existing" &>> "$LOG_FILE"
+  
+  log "Katalog-Upgrade für $DB"
+  su - "$INSTANCE" -c "db2updv121 -d $DB" &>> "$LOG_FILE"
+  
+  log "Log-Pfad für $DB anpassen"
+  su - "$INSTANCE" -c "db2 update db cfg for $DB using NEWLOGPATH '/db2logs'" &>> "$LOG_FILE"
+done
+
+# ===== POST-UPGRADE =====
+log "=== Finale Konfiguration ==="
+su - "$INSTANCE" -c "db2set DB2_USE_ALTERNATE_PAGE_CLEANING=ON"
+su - "$INSTANCE" -c "db2rbind all -l $BACKUP_DIR/rebind.log all" &>> "$LOG_FILE"
+su - "$INSTANCE" -c "db2stop force" &>> "$LOG_FILE"
+
+log "=== PRODUKTIONS-UPGRADE ERFOLGREICH ==="
