@@ -122,7 +122,7 @@ if [ -z "$DB_NAME" ] || [ "$UC_DB_NAME" = "ALL" ]; then # Check original DB_NAME
     log_message "DB_NAME is '$DB_NAME' (interpreted as ALL). Attempting to back up all user databases for instance '$INSTANCE'."
     ALL_DBS_MODE=true
     
-    DB_LIST_CMD="db2 list db directory | awk '/Database alias/ {print \\$NF}' | grep -vE '^SQL[0-9]{5}N\$|^DSN[0-9]{4,5}[A-Z0-9]\$' | sort -u"
+    DB_LIST_CMD="db2 list db directory | awk '/Database alias|Aliasname der Datenbank/ {print $NF}' | grep -vE '^SQL[0-9]{5}N\$|^DSN[0-9]{4,5}[A-Z0-9]\$' | sort -u"
     
     mapfile_output=$(su - "$INSTANCE" -c ". \$HOME/sqllib/db2profile; $DB_LIST_CMD")
     su_rc=$? # Capture exit status of the su command itself
