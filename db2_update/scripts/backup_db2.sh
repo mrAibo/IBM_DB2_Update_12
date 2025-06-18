@@ -61,7 +61,7 @@ db2 backup db "$current_db_name" \
   compress \
   include logs \
   without prompting
-echo "DB2_BACKUP_RC:\$?_DB2_BACKUP_RC"
+echo "DB2_BACKUP_RC:\$?_DB2_BACKUP_RC" 
 HEREDOC_END
     )
 
@@ -75,7 +75,7 @@ HEREDOC_END
         log_message "WARNING: Could not determine specific DB2 backup RC for $current_db_name from output marker."
         if echo "$backup_output" | grep -q -E "SQL[0-9]{4,5}[NECWF]|DBA[0-9]{4,5}|ERROR|failed|abend"; then
              log_message "Error pattern detected in backup output for $current_db_name."
-             THE_BACKUP_RC=1
+             THE_BACKUP_RC=1 
         elif echo "$backup_output" | grep -q -E "Backup successful|completed successfully"; then
              log_message "Success pattern detected in backup output for $current_db_name, but RC marker was missing."
              THE_BACKUP_RC=0
@@ -121,18 +121,18 @@ UC_DB_NAME="${DB_NAME^^}" # Convert DB_NAME to uppercase for case-insensitive "A
 if [ -z "$DB_NAME" ] || [ "$UC_DB_NAME" = "ALL" ]; then # Check original DB_NAME for empty, UC_DB_NAME for "ALL"
     log_message "DB_NAME is '$DB_NAME' (interpreted as ALL). Attempting to back up all user databases for instance '$INSTANCE'."
     ALL_DBS_MODE=true
-
+    
     DB_LIST_CMD="db2 list db directory | awk '/Database alias/ {print \\$NF}' | grep -vE '^SQL[0-9]{5}N\$|^DSN[0-9]{4,5}[A-Z0-9]\$' | sort -u"
-
+    
     mapfile_output=$(su - "$INSTANCE" -c ". \$HOME/sqllib/db2profile; $DB_LIST_CMD")
     su_rc=$? # Capture exit status of the su command itself
-
-    if [ $su_rc -ne 0 ] || ([ $su_rc -eq 0 ] && [ -z "$mapfile_output" ]); then
+    
+    if [ $su_rc -ne 0 ] || ([ $su_rc -eq 0 ] && [ -z "$mapfile_output" ]); then 
         log_message "  WARNING/ERROR: Failed to list databases or no databases found for instance '$INSTANCE'. SU RC: $su_rc. Output: '$mapfile_output'."
         # If mapfile_output is empty and su_rc is 0, it means no DBs were found by the command.
         # If su_rc is non-zero, the command itself failed.
     fi
-
+    
     DATABASE_NAMES=()
     mapfile -t DATABASE_NAMES < <(printf '%s\n' "$mapfile_output")
 
@@ -148,13 +148,13 @@ if [ -z "$DB_NAME" ] || [ "$UC_DB_NAME" = "ALL" ]; then # Check original DB_NAME
         for current_db in "${DATABASE_NAMES[@]}"; do
             if ! process_single_database "$current_db"; then
                 log_message "Backup failed for database $current_db. See logs above."
-                overall_rc=1
+                overall_rc=1 
             fi
         done
     fi
 else
     log_message "Processing single database as specified: $DB_NAME"
-    ALL_DBS_MODE=false
+    ALL_DBS_MODE=false 
     if ! process_single_database "$DB_NAME"; then
         overall_rc=1
     fi
