@@ -34,7 +34,7 @@ This method directly upgrades the existing instance and its databases. The detai
 
 ## Method B: Recreate Instance & Restore Databases
 
-This method involves building a new, clean instance with the target DB2 version and then restoring the user databases into it. The script `scripts/recreate_restore_upgrade.sh` is an example implementation of this approach.
+This method involves building a new, clean instance with the target DB2 version and then restoring the user databases into it. The script `scripts/recreate_restore_upgrade.sh` is an example implementation of this approach, offering options for either automated or manual execution of the backup and restore phases within its workflow.
 
 ### Pros:
 *   **Clean Slate Instance:** Starts with a fresh DB2 instance using default configurations for the new version (unless explicitly scripted). This can eliminate old, potentially problematic or undocumented instance-level settings.
